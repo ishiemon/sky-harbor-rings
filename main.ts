@@ -1,0 +1,35 @@
+// Sky Harbor Rings — hand-in program (Node 22, standard library only).
+// Written for this entry: the playable game lives in game/ as plain static
+// files (game/index.html plus its ES modules, no library, no network), and
+// this program is what the grader runs. It copies game/ and screenshots/
+// into the output directory and writes dossier.json there with
+// buildDossier from the vendored make.fun library, using the scorer's
+// own caps so an entry the scorer would refuse is refused here first.
+// Local run:  mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// Play it:    node serve.ts   then open http://localhost:8080
+
+import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { buildDossier } from './vendor/makefun-game.ts';
+
+const ENTRY_TITLE = 'Sky Harbor Rings';
+const here = fileURLToPath(new URL('.', import.meta.url));
+const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+
+mkdirSync(out, { recursive: true });
+cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
+mkdirSync(join(out, 'screenshots'), { recursive: true });
+if (existsSync(join(here, 'screenshots'))) {
+  cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+}
+
+const dossier = buildDossier(out, {
+  text_max_bytes: 163840,
+  screenshots: { max: 4, max_bytes: 262144 },
+  game_max_files: 993,
+  game_max_bytes: 50331648,
+  game_path_max_bytes: 1000,
+});
+writeFileSync(join(out, 'dossier.json'), dossier);
+console.log(`${ENTRY_TITLE}: dossier written to ${out}`);
