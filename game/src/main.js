@@ -1,5 +1,5 @@
 
-import {BEST_KEY,STEP} from './config.js';
+import {BEST_KEY,GAME_TAGLINE,GAME_TITLE,STEP} from './config.js';
 import {createRandom} from './random.js';
 import {createWorld,EVENT_HIT,EVENT_OVER,EVENT_RING} from './world.js';
 import {ACTION_CONFIRM,ACTION_PAUSE,createInput} from './input.js';
@@ -21,5 +21,5 @@ function runGame(){ const input=createInput(canvas); let screen=SCREEN_TITLE,bes
    if(screen===SCREEN_TITLE||screen===SCREEN_PLAY){ while(acc>=STEP && (screen===SCREEN_TITLE||screen===SCREEN_PLAY)){ const ev=world.step(STEP, screen===SCREEN_TITLE?{x:0,y:0,throttle:0}:input.direction(), screen===SCREEN_TITLE); if(ev&EVENT_OVER && screen===SCREEN_PLAY) end(); acc-=STEP; } } else acc=0;
    renderer.draw(world.state,screen,best); }
  document.addEventListener('visibilitychange',()=>{ if(document.hidden&&screen===SCREEN_PLAY) screen=SCREEN_PAUSED; });
- status.textContent='Sky Harbor Rings. Press Space or click to fly.'; requestAnimationFrame(frame); }
+ status.textContent=GAME_TITLE+'. '+GAME_TAGLINE+' Press Space or click to fly.'; requestAnimationFrame(frame); }
 if(shot) runShot(shot); else runGame();
