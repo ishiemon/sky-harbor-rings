@@ -12,6 +12,14 @@ function clamp01(v) {
   return Math.max(0, Math.min(1, v));
 }
 
+// Blend two #rrggbb colours (t in [0,1]) — used to crossfade the
+// scenery palettes between background zones.
+function lerpCol(a, b, t) {
+  const ca = [1, 3, 5].map(i => parseInt(a.substr(i, 2), 16));
+  const cb = [1, 3, 5].map(i => parseInt(b.substr(i, 2), 16));
+  return 'rgb(' + ca.map((v, i) => Math.round(v + (cb[i] - v) * t)).join(',') + ')';
+}
+
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
   canvas.width = FIELD.width;
@@ -478,7 +486,7 @@ export function createRenderer(canvas) {
   // camPar shifts the vanishing point with the plane's lateral position
   // (full at the horizon, zero in the foreground) and gAltF narrows the
   // spread as altitude grows; both are set at the top of draw().
-  let camPar = 0, gAltF = 0;
+  let camPar = 0, gAltF = 0, seaShift = 0;
   function groundPoint(u, d, hor) {
     const y = hor + Math.pow(d, 1.35) * (H + 70 - hor);
     const vx = 640 + camPar * (1 - d);
@@ -490,11 +498,11 @@ export function createRenderer(canvas) {
   // the shadow tone, then each peak's sun-facing slope (the sun is on
   // the right, so slopes descending to the right catch the light) is
   // overpainted with the lit tone down to the base line.
-  function ridge(baseY, amp, seed, shadowCol, litCol, alpha, xoff = 0) {
+  function ridge(baseY, amp, seed, shadowCol, litCol, alpha, xoff = 0, xMax = W + 140) {
     const pts = [];
     let x = -140 + xoff;
     let i = 0;
-    while (x < W + 140) {
+    while (x < xMax) {
       const wdt = 90 + hash(seed + i) * 150;
       pts.push([x + wdt * 0.45, baseY - hash(seed + i * 3.7) * amp]);
       pts.push([x + wdt, baseY + 6 - hash(seed + i * 1.3) * amp * 0.3]);
@@ -506,7 +514,7 @@ export function createRenderer(canvas) {
     ctx.beginPath();
     ctx.moveTo(-140 + xoff, baseY + 30);
     for (const [px, py] of pts) ctx.lineTo(px, py);
-    ctx.lineTo(W + 140, baseY + 30);
+    ctx.lineTo(xMax, baseY + 30);
     ctx.closePath();
     ctx.fill();
     ctx.fillStyle = litCol;
@@ -532,7 +540,7 @@ export function createRenderer(canvas) {
   function shorePoint(t, hor, shX) {
     const mt = 1 - t;
     return [
-      mt * mt * 752 + 2 * mt * t * 864 + t * t * 834 + shX,
+      mt * mt * 752 + 2 * mt * t * 864 + t * t * 834 + shX + seaShift,
       mt * mt * (hor + 2) + 2 * mt * t * (hor + 130) + t * t * (H + 70),
     ];
   }
@@ -570,6 +578,53 @@ export function createRenderer(canvas) {
     ctx.moveTo(x - w / 2 + rx, ry); ctx.lineTo(x + w / 2 + rx, ry);
     ctx.lineTo(x + w / 2 + dx, y - h - dy); ctx.lineTo(x - w / 2 + dx, y - h - dy);
     ctx.closePath(); ctx.fill();
+  }
+
+  // One recycled terrain part, drawn in the style of a scenery zone:
+  // 0 harbour suburb house, 1 open sea (no land parts at all), 2 city
+  // block, 3 forest tree clump. The caller passes the part's own zone
+  // and blend alpha, so old and new zone parts interleave naturally
+  // while a changeover streams past.
+  function townElement(i, x, y, sc, w, h, zone, alpha, roof) {
+    if (alpha <= 0.01 || zone === 1) return;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    if (zone === 2) {
+      // city block: taller and wider, cool walls, a grid of windows
+      const bw = w * 1.2, bh = h * 2.3;
+      isoBox(x, y, bw, bh, 13 * sc, i % 2 ? '#cfd8dc' : '#aebfc7', i % 3 ? '#546e7a' : '#6d4c41');
+      ctx.fillStyle = '#ffd76a';
+      for (let r2 = 0; r2 < 3; r2++) {
+        for (let c2 = 0; c2 < 2; c2++) {
+          if (hash(i * 31 + r2 * 7 + c2 * 13) > 0.45) {
+            ctx.fillRect(x - bw * 0.30 + c2 * bw * 0.32, y - bh * (0.78 - r2 * 0.22), 4 * sc, 4.6 * sc);
+          }
+        }
+      }
+    } else if (zone === 3) {
+      // forest: canopy blobs on a short trunk
+      ctx.fillStyle = '#5d4037';
+      ctx.fillRect(x - 1.6 * sc, y - 6 * sc, 3.2 * sc, 6 * sc);
+      ctx.fillStyle = '#2e7d32';
+      ctx.beginPath(); ctx.ellipse(x, y - 11 * sc, 13 * sc, 9 * sc, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#43a047';
+      ctx.beginPath(); ctx.ellipse(x - 6 * sc, y - 15 * sc, 8.5 * sc, 6.5 * sc, 0, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(x + 6.5 * sc, y - 14 * sc, 7.5 * sc, 6 * sc, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#66bb6a';
+      ctx.beginPath(); ctx.ellipse(x - 1 * sc, y - 17 * sc, 5 * sc, 3.6 * sc, 0, 0, 7); ctx.fill();
+    } else {
+      // harbour suburb house with a lit window and the odd garden tree
+      isoBox(x, y, w, h, 12 * sc, '#f5efe0', roof);
+      ctx.fillStyle = '#ffd76a';
+      ctx.fillRect(x - w * 0.22, y - h * 0.62, 4.5 * sc, 4.5 * sc);
+      if (i % 3 === 0) {
+        ctx.fillStyle = '#2e7d32';
+        ctx.beginPath(); ctx.ellipse(x + w * 0.85, y - 3 * sc, 8 * sc, 6 * sc, 0, 0, 7); ctx.fill();
+        ctx.fillStyle = '#43a047';
+        ctx.beginPath(); ctx.ellipse(x + w * 0.72, y - 6 * sc, 5.5 * sc, 4.5 * sc, 0, 0, 7); ctx.fill();
+      }
+    }
+    ctx.restore();
   }
 
   // Storm cell: its own tall, irregular cumulonimbus silhouette (not
@@ -675,6 +730,41 @@ export function createRenderer(canvas) {
     gAltF = altF;
     const shX = camPar * 0.85;
 
+    // ===== scenery zones along the route =====
+    // The world flows endlessly the way the course items do: terrain
+    // parts sit along the forward axis, stream past, and recycle to
+    // the far end. Zones are a property of ROUTE POSITION, not of the
+    // screen, and they are ordered as a journey: 0 home coast and
+    // harbour → 1 open-sea crossing → 2 city landfall → 3 forest →
+    // loop back to the coast, one zone per 12 nm leg. A part's zone
+    // comes from its own route position (camera distance + how far
+    // ahead of the plane it is), so during a changeover the far parts
+    // are re-placed in the new zone first and old and new parts
+    // interleave as they stream past — no stitched backdrop, no
+    // screen-space crossfade. Entering the sea leg, land parts stop
+    // being re-spawned ahead and the coastline itself slides away
+    // behind (seaShift), leaving open water on all sides until the
+    // next landfall's parts appear ahead.
+    const ZONE_LEN = 12, LOOKAHEAD = 1.2;
+    function zoneAt(route) {
+      const p = ((route / ZONE_LEN) % 4 + 4) % 4;
+      const a = Math.floor(p), fr = p - a;
+      const bl = clamp01((fr - 0.82) / 0.18);
+      const f = bl * bl * (3 - 2 * bl);
+      const b = (a + 1) % 4;
+      return {a, b, f, wSea: a === 1 ? 1 - f : b === 1 ? f : 0};
+    }
+    // palette mix for one part, given its zone reading
+    const pMix = (cols, z) => z.f <= 0 ? cols[z.a] : lerpCol(cols[z.a], cols[z.b], z.f);
+    // the camera's own zone reading drives whole-world features that
+    // have a single position (coastline, runway, far ridgeline)
+    const camZ = zoneAt(s.dist);
+    const seaW = camZ.wSea;
+    const wts = [0, 0, 0, 0];
+    wts[camZ.a] = 1 - camZ.f;
+    wts[camZ.b] += camZ.f;
+    seaShift = -seaW * 1200;
+
     // ===== world, rolled slightly with the bank around the horizon =====
     ctx.save();
     ctx.translate(640, hor);
@@ -714,11 +804,17 @@ export function createRenderer(canvas) {
       cloud(cx, cy, 0.95, '#ffffff');
     }
 
-    // layered mountain ridgelines: two-tone faces, hazier with distance,
-    // drifting slightly against the camera for parallax
-    ridge(hor + 4, 66, 11.3, '#7ea8cc', '#a8c8e4', 0.75, camPar * 0.18);
-    ridge(hor + 6, 88, 47.9, '#5d8a68', '#84b184', 0.9, camPar * 0.30);
-    ridge(hor + 8, 58, 83.1, '#3f7350', '#5f9c66', 1, camPar * 0.42);
+    // layered far ridgelines on the LAND side only: the layers end at
+    // the coastline, so the horizon over the sea stays open water and
+    // sky — no fixed ridge backdrop spanning the whole frame. As the
+    // sea leg takes over (seaW → 1) the coastline itself exits left,
+    // the ridge span shrinks with it and the layers fade out entirely.
+    const ridgeMax = 746 + shX + seaShift;
+    if (seaW < 0.99) {
+      ridge(hor + 4, 66, 11.3, '#7ea8cc', '#a8c8e4', 0.75 * (1 - seaW), camPar * 0.18, ridgeMax);
+      ridge(hor + 6, 88, 47.9, '#5d8a68', '#84b184', 0.9 * (1 - seaW), camPar * 0.30, ridgeMax);
+      ridge(hor + 8, 58, 83.1, '#3f7350', '#5f9c66', 1 - seaW, camPar * 0.42, ridgeMax);
+    }
     // golden haze band on the horizon
     const hz = ctx.createLinearGradient(0, hor - 26, 0, hor + 16);
     hz.addColorStop(0, 'rgba(255,227,161,0)');
@@ -739,20 +835,30 @@ export function createRenderer(canvas) {
     }
 
     // patchwork fields, left, in ground perspective; the rows scroll
-    // toward the viewer with distance flown and cycle their colours
-    const fieldCols = ['#f2c230', '#e8a91c', '#cfe06a', '#9ccf5a', '#f4d35e', '#d9e021'];
+    // toward the viewer with distance flown and cycle their colours.
+    // Each row takes the palette of the zone at its own route
+    // position (harbour farmland → urban plots → forest meadow), and
+    // fades out as its position turns to open sea.
+    const fieldPals = [
+      ['#f2c230', '#e8a91c', '#cfe06a', '#9ccf5a', '#f4d35e', '#d9e021'],
+      ['#f2c230', '#e8a91c', '#cfe06a', '#9ccf5a', '#f4d35e', '#d9e021'],
+      ['#a3a08e', '#8f8b7c', '#9c968a', '#7e7a6e', '#aba48f', '#8a8578'],
+      ['#3e8e4f', '#35794a', '#4da653', '#2c7a3e', '#5cb85c', '#2f6b33'],
+    ];
     const fscroll = (s.dist * 0.045) % 0.185;
     const fcycle = Math.floor(s.dist * 0.045 / 0.185);
     for (let row = 0; row < 5; row++) {
       const d0 = 0.06 + row * 0.185 + fscroll, d1 = d0 + 0.165;
       const [ax, ay] = groundPoint(-1.12, d0, hor), [bx, by] = groundPoint(-0.17, d0, hor);
       const [cx2, cy2] = groundPoint(-0.17, d1, hor), [dx2, dy2] = groundPoint(-1.12, d1, hor);
-      ctx.fillStyle = fieldCols[(row + 1 + fcycle) % fieldCols.length];
-      ctx.globalAlpha = 0.92;
+      const rowZ = zoneAt(s.dist + (1 - (d0 + d1) / 2) * LOOKAHEAD);
+      const ci = (row + 1 + fcycle) % 6;
+      ctx.fillStyle = pMix(fieldPals.map(p => p[ci]), rowZ);
+      ctx.globalAlpha = 0.92 * (1 - rowZ.wSea);
       ctx.beginPath();
       ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.lineTo(cx2, cy2); ctx.lineTo(dx2, dy2);
       ctx.closePath(); ctx.fill();
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = 1 - rowZ.wSea;
       ctx.strokeStyle = 'rgba(120,84,20,0.30)';
       ctx.lineWidth = 1.6;
       for (let rI = 1; rI < 4; rI++) {
@@ -762,9 +868,10 @@ export function createRenderer(canvas) {
       }
     }
 
-    // town, lower-left: isometric houses that shrink toward the horizon
-    // and drift slowly past with distance flown, each with a shadow and
-    // a lit window; tree clumps fill the gaps between rows
+    // town, lower-left: recycled terrain parts that shrink toward the
+    // horizon and drift slowly past with distance flown. Each part is
+    // drawn in the style of the zone at its own route position, so a
+    // changeover streams through the lattice part by part.
     const roofs = ['#c0392b', '#e67e22', '#8e44ad', '#2471a3', '#b03a2e', '#ca6f1e'];
     for (let i = 0; i < 16; i++) {
       const u = -1.02 + (i % 4) * 0.21 + hash(i * 7) * 0.05;
@@ -772,19 +879,18 @@ export function createRenderer(canvas) {
       const [hx, hy] = groundPoint(u, d, hor);
       const sc = 0.45 + d * 1.5;
       const w = 26 * sc, h = 16 * sc;
+      const pz = zoneAt(s.dist + (1 - d) * LOOKAHEAD);
       ctx.fillStyle = 'rgba(30,60,30,0.25)';
+      ctx.globalAlpha = 1 - pz.wSea;
       ctx.beginPath(); ctx.ellipse(hx + 3, hy + 3, w * 0.62, 4 * sc, 0, 0, 7); ctx.fill();
-      isoBox(hx, hy, w, h, 12 * sc, '#f5efe0', roofs[i % roofs.length]);
-      ctx.fillStyle = '#ffd76a';
-      ctx.fillRect(hx - w * 0.22, hy - h * 0.62, 4.5 * sc, 4.5 * sc);
-      if (i % 3 === 0) {
-        ctx.fillStyle = '#2e7d32';
-        ctx.beginPath(); ctx.ellipse(hx + w * 0.85, hy - 3 * sc, 8 * sc, 6 * sc, 0, 0, 7); ctx.fill();
-        ctx.fillStyle = '#43a047';
-        ctx.beginPath(); ctx.ellipse(hx + w * 0.72, hy - 6 * sc, 5.5 * sc, 4.5 * sc, 0, 0, 7); ctx.fill();
-      }
+      ctx.globalAlpha = 1;
+      townElement(i, hx, hy, sc, w, h, pz.a, 1 - pz.f, roofs[i % roofs.length]);
+      if (pz.f > 0) townElement(i, hx, hy, sc, w, h, pz.b, pz.f, roofs[i % roofs.length]);
     }
-    // harbour warehouses and a dock crane on the shore side of the runway
+    // harbour warehouses and a dock crane on the shore side of the
+    // runway — home-harbour features, present only in the home zone
+    ctx.save();
+    ctx.globalAlpha = wts[0];
     const [w1x, w1y] = groundPoint(0.24, 0.66, hor);
     isoBox(w1x, w1y, 56, 22, 24, '#b0a696', '#7a4a3a');
     const [w2x, w2y] = groundPoint(0.30, 0.50, hor);
@@ -800,10 +906,13 @@ export function createRenderer(canvas) {
     ctx.beginPath(); ctx.moveTo(crx + 38, cry - 56); ctx.lineTo(crx + 38, cry - 38); ctx.stroke();
     ctx.fillStyle = '#e67e22';
     ctx.fillRect(crx + 33, cry - 38, 10, 8);
+    ctx.restore();
     // road through the town: a ground-projected strip at constant u,
     // threaded between two house columns, so it recedes straight to
     // the vanishing point like the runway does — the old diagonal
     // sweep across the frame made the ground read as sliding sideways
+    ctx.save();
+    ctx.globalAlpha = wts[0];
     ctx.fillStyle = 'rgba(90,90,90,0.6)';
     ctx.beginPath();
     for (let i = 0; i <= 6; i++) {
@@ -825,14 +934,15 @@ export function createRenderer(canvas) {
     }
     ctx.stroke();
     ctx.setLineDash([]);
+    ctx.restore();
 
     // ===== harbor: real water to the horizon on the right =====
     const waterPath = new Path2D();
-    waterPath.moveTo(752 + shX, hor + 2);
-    waterPath.quadraticCurveTo(864 + shX, hor + 130, 834 + shX, H + 70);
+    waterPath.moveTo(752 + seaShift + shX, hor + 2);
+    waterPath.quadraticCurveTo(864 + seaShift + shX, hor + 130, 834 + seaShift + shX, H + 70);
     waterPath.lineTo(1420, H + 70);
     waterPath.lineTo(1420, hor - 8);
-    waterPath.quadraticCurveTo(1120 + shX, hor + 26, 996 + shX, hor + 1);
+    waterPath.quadraticCurveTo(1120 + seaShift * 0.4 + shX, hor + 26, 996 + seaShift * 0.4 + shX, hor + 1);
     waterPath.closePath();
     const wg2 = ctx.createLinearGradient(760, hor, 1120, H + 60);
     wg2.addColorStop(0, '#57c7e8'); wg2.addColorStop(0.5, '#1f8fc4'); wg2.addColorStop(1, '#0f5f96');
@@ -841,9 +951,25 @@ export function createRenderer(canvas) {
     // island silhouette on the horizon
     ctx.fillStyle = 'rgba(70,110,140,0.75)';
     ctx.beginPath();
-    ctx.moveTo(1150 + shX, hor + 3);
-    ctx.quadraticCurveTo(1235 + shX, hor - 26, 1330 + shX, hor + 3);
+    ctx.moveTo(1150 + seaShift * 0.4 + shX, hor + 3);
+    ctx.quadraticCurveTo(1235 + seaShift * 0.4 + shX, hor - 26, 1330 + seaShift * 0.4 + shX, hor + 3);
     ctx.closePath(); ctx.fill();
+    // open-sea islets: they fade in with the sea leg, when the view is
+    // water in every direction and islands and boats are the scenery
+    if (seaW > 0.01) {
+      ctx.save();
+      ctx.globalAlpha = seaW * 0.85;
+      ctx.fillStyle = 'rgba(70,110,140,0.75)';
+      ctx.beginPath();
+      ctx.moveTo(620 + shX * 0.5, hor + 3);
+      ctx.quadraticCurveTo(672 + shX * 0.5, hor - 15, 730 + shX * 0.5, hor + 3);
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(905 + shX * 0.5, hor + 3);
+      ctx.quadraticCurveTo(938 + shX * 0.5, hor - 10, 975 + shX * 0.5, hor + 3);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
     // everything wet stays inside the water from here on
     ctx.save();
     ctx.clip(waterPath);
@@ -888,7 +1014,10 @@ export function createRenderer(canvas) {
     }
     ctx.stroke();
     // pier: rooted on the land side of the shoreline, tapering as it
-    // reaches out over the water; its footing drifts slowly with dist
+    // reaches out over the water; its footing drifts slowly with dist.
+    // A home-harbour feature: it fades with the home zone's weight.
+    ctx.save();
+    ctx.globalAlpha = wts[0];
     const pierT = 0.54 + ((s.dist * 0.01) % 0.08);
     const [qx, qy] = shorePoint(pierT, hor, shX);
     const px0 = qx - 20, py0 = qy + 4, px1 = qx + 128, py1 = qy + 14;
@@ -906,12 +1035,16 @@ export function createRenderer(canvas) {
       ctx.lineTo(px0 + (px1 - px0) * t, py0 + (py1 - py0) * t + 8 - t * 3);
       ctx.stroke();
     }
+    ctx.restore();
     // boats with wakes, creeping along their lanes as distance passes
     const [b1x, b1y] = groundPoint(1.02 - ((s.dist * 0.010) % 0.45), 0.42, hor);
     boat(b1x, b1y, 0.9, 1);
     const [b2x, b2y] = groundPoint(0.66 + ((s.dist * 0.006) % 0.30), 0.20, hor);
     boat(b2x, b2y, 0.5, -1);
-    // lighthouse on the shore point
+    // lighthouse on the shore point — a home-harbour landmark, so it
+    // too fades with the home zone's weight
+    ctx.save();
+    ctx.globalAlpha = wts[0];
     const [lx2, ly2] = groundPoint(0.47, 0.30, hor);
     const lh = 54;
     ctx.fillStyle = 'rgba(255,235,160,0.30)';
@@ -928,10 +1061,14 @@ export function createRenderer(canvas) {
     ctx.fillRect(lx2 - 5, ly2 - lh + 4, 10, 8);
     ctx.fillStyle = '#ffe45e';
     ctx.fillRect(lx2 - 3, ly2 - lh + 6, 6, 4);
+    ctx.restore();
 
     // ===== runway: through the bottom edge, perspective markings =====
     // The strip converges on the parallaxed vanishing point up top and
-    // stays centred on 640 where it leaves the bottom edge.
+    // stays centred on 640 where it leaves the bottom edge. It is the
+    // home airfield's strip, so it fades with the home zone's weight.
+    ctx.save();
+    ctx.globalAlpha = wts[0];
     const rTopX = 640 + camPar, rBotX = 640;
     ctx.fillStyle = '#333d47';
     ctx.beginPath();
@@ -965,10 +1102,9 @@ export function createRenderer(canvas) {
       ctx.save();
       ctx.translate(nx, ny);
       ctx.scale(1.45, 0.72);
-      ctx.globalAlpha = 0.92;
+      ctx.globalAlpha *= 0.92;
       text('09', 0, 0, 30, '#ffffff');
       ctx.restore();
-      ctx.globalAlpha = 1;
     }
     // centreline dashes scrolling with distance flown
     const phase = (s.dist * 1.4) % 1;
@@ -991,6 +1127,7 @@ export function createRenderer(canvas) {
       ctx.beginPath(); ctx.arc(ex, ey, 2 + d * 3.4, 0, 7); ctx.fill();
       ctx.beginPath(); ctx.arc(fx2, fy2, 2 + d * 3.4, 0, 7); ctx.fill();
     }
+    ctx.restore();
     ctx.restore();
 
     // ===== items, far to near =====
