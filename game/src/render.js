@@ -103,121 +103,133 @@ export function createRenderer(canvas) {
     ctx.closePath();
   }
 
-  // ---------- the plane: rear chase view (seen from behind-above) ----------
-  // Forward is up-screen (-y): prop disc at the far nose, fuselage tapering
-  // away, canopy back, main wing as a dihedral rear section, tailplane and
-  // the vertical fin facing the camera at the near end.
+  // ---------- the plane: rear chase view ----------
+  // The camera sits close behind and slightly above, so the airframe
+  // is heavily foreshortened: the fuselage is a short taper receding
+  // to a small prop disc at the far end, the wide main wing dominates
+  // the middle, and the tailplane and fin — nearest the camera —
+  // anchor the bottom of the sprite. Forward is up-screen (-y) but
+  // the nose sits level, at cruise attitude: the plane flies away
+  // from the camera, it does not stand on its tail.
   function planeRear(x, y, bank, scale, pitch = 0) {
     ctx.save();
     ctx.translate(x + bank * 9, y);
     ctx.rotate(bank * 0.36);
     ctx.scale(scale, scale);
-    // pitch foreshortening: nose-up squashes the airframe vertically and
-    // lifts the prop disc, nose-down stretches it and drops the disc
+    // pitch foreshortening: nose-up squashes the (already short)
+    // airframe a touch more and lifts the prop disc, nose-down
+    // stretches it and drops the disc
     ctx.scale(1, 1 - pitch * 0.13);
-    const noseY = -50 - pitch * 9;
+    const noseY = -31 - pitch * 5;
 
-    // propeller: translucent blur disc at the far nose, wider than fuselage
+    // propeller: small translucent blur disc at the far nose — the
+    // far end of a foreshortened airframe, so barely wider than the
+    // fuselage and squashed nearly flat
     ctx.fillStyle = 'rgba(228,246,255,0.15)';
-    ctx.beginPath(); ctx.ellipse(0, noseY, 37, 9.5, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, noseY, 25, 6.5, 0, 0, 7); ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.55)';
     ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.ellipse(0, noseY, 37, 9.5, 0, 0, 7); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(0, noseY, 25, 6.5, 0, 0, 7); ctx.stroke();
     ctx.strokeStyle = 'rgba(25,45,75,0.45)';
-    ctx.beginPath(); ctx.ellipse(0, noseY, 25, 6, 0, 0, 7); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(0, noseY, 17, 4.2, 0, 0, 7); ctx.stroke();
 
-    // main wing: rear section with dihedral (tips rise), gold, red tips
+    // main wing: the dominant shape — a wide rear section with
+    // dihedral (tips rise), gold with red tips, sitting low on the
+    // fuselage toward the camera end
     const wg = ctx.createLinearGradient(-122, 0, 122, 0);
     wg.addColorStop(0, '#f7b500'); wg.addColorStop(0.5, '#ffe97a'); wg.addColorStop(1, '#f7b500');
     ctx.fillStyle = wg;
     ctx.beginPath();
-    ctx.moveTo(-122, -2); ctx.lineTo(-14, 7); ctx.lineTo(14, 7); ctx.lineTo(122, -2);
-    ctx.lineTo(122, 13); ctx.lineTo(14, 19); ctx.lineTo(-14, 19); ctx.lineTo(-122, 13);
+    ctx.moveTo(-122, -4); ctx.lineTo(-14, 6); ctx.lineTo(14, 6); ctx.lineTo(122, -4);
+    ctx.lineTo(122, 10); ctx.lineTo(14, 17); ctx.lineTo(-14, 17); ctx.lineTo(-122, 10);
     ctx.closePath(); ctx.fill();
     ctx.fillStyle = '#e8322a';
-    ctx.beginPath(); ctx.moveTo(-122, -2); ctx.lineTo(-100, -0.5); ctx.lineTo(-100, 14.5); ctx.lineTo(-122, 13); ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(122, -2); ctx.lineTo(100, -0.5); ctx.lineTo(100, 14.5); ctx.lineTo(122, 13); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-122, -4); ctx.lineTo(-100, -2.2); ctx.lineTo(-100, 11.3); ctx.lineTo(-122, 10); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(122, -4); ctx.lineTo(100, -2.2); ctx.lineTo(100, 11.3); ctx.lineTo(122, 10); ctx.closePath(); ctx.fill();
     // aileron hinge lines + dark walkway strips at the root
     ctx.strokeStyle = 'rgba(120,70,0,0.45)';
     ctx.lineWidth = 1.6;
-    ctx.beginPath(); ctx.moveTo(-96, 2); ctx.lineTo(-96, 15); ctx.moveTo(96, 2); ctx.lineTo(96, 15); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-96, 0); ctx.lineTo(-96, 11.5); ctx.moveTo(96, 0); ctx.lineTo(96, 11.5); ctx.stroke();
     ctx.fillStyle = 'rgba(40,40,46,0.55)';
-    ctx.fillRect(-30, 8, 12, 10); ctx.fillRect(18, 8, 12, 10);
+    ctx.fillRect(-30, 7.5, 12, 8.5); ctx.fillRect(18, 7.5, 12, 8.5);
     // navigation lights on the wingtips
     ctx.save();
     ctx.shadowBlur = 9;
     ctx.shadowColor = '#ff3b30'; ctx.fillStyle = '#ff5147';
-    ctx.beginPath(); ctx.arc(-121, 5, 3.6, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(-121, 3, 3.6, 0, 7); ctx.fill();
     ctx.shadowColor = '#2eff8a'; ctx.fillStyle = '#3dff8f';
-    ctx.beginPath(); ctx.arc(121, 5, 3.6, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(121, 3, 3.6, 0, 7); ctx.fill();
     ctx.restore();
 
     // tailplane (horizontal stabiliser) at the near end
     ctx.fillStyle = '#f7b500';
     ctx.beginPath();
-    ctx.moveTo(-54, 36); ctx.lineTo(0, 31); ctx.lineTo(54, 36);
-    ctx.lineTo(54, 46); ctx.lineTo(0, 42); ctx.lineTo(-54, 46);
+    ctx.moveTo(-57, 26); ctx.lineTo(0, 21); ctx.lineTo(57, 26);
+    ctx.lineTo(57, 36); ctx.lineTo(0, 32); ctx.lineTo(-57, 36);
     ctx.closePath(); ctx.fill();
     ctx.fillStyle = '#e8322a';
-    ctx.fillRect(-54, 42, 108, 4);
+    ctx.fillRect(-57, 32.5, 114, 3.8);
 
-    // fuselage: bulges at the cabin, tapers to the nose (far) and tail (near)
+    // fuselage: short and strongly tapered — it bulges briefly at
+    // the cabin, then narrows fast toward the far nose and the near
+    // tail cone, so only a hint of its top shows from behind
     const fg = ctx.createLinearGradient(-24, 0, 24, 0);
     fg.addColorStop(0, '#a01810'); fg.addColorStop(0.32, '#f0442e');
     fg.addColorStop(0.58, '#ff7a4d'); fg.addColorStop(1, '#b31b12');
     ctx.fillStyle = fg;
     ctx.beginPath();
-    ctx.moveTo(0, -57);
-    ctx.quadraticCurveTo(15, -44, 20, -18);
-    ctx.quadraticCurveTo(24, 4, 19, 26);
-    ctx.quadraticCurveTo(15, 44, 9, 52);
-    ctx.lineTo(-9, 52);
-    ctx.quadraticCurveTo(-15, 44, -19, 26);
-    ctx.quadraticCurveTo(-24, 4, -20, -18);
-    ctx.quadraticCurveTo(-15, -44, 0, -57);
+    ctx.moveTo(0, -36);
+    ctx.quadraticCurveTo(13, -27, 17, -10);
+    ctx.quadraticCurveTo(20, 3, 16, 15);
+    ctx.quadraticCurveTo(12.5, 25, 8, 30);
+    ctx.lineTo(-8, 30);
+    ctx.quadraticCurveTo(-12.5, 25, -16, 15);
+    ctx.quadraticCurveTo(-20, 3, -17, -10);
+    ctx.quadraticCurveTo(-13, -27, 0, -36);
     ctx.closePath(); ctx.fill();
     // spine highlight + panel line + belly stripe
     ctx.fillStyle = 'rgba(255,255,255,0.28)';
-    ctx.beginPath(); ctx.ellipse(-6, -6, 6.5, 38, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-5, -5, 5.5, 20, 0, 0, 7); ctx.fill();
     // sunlight from the upper right: warm sheen on the sun side of the
     // fuselage, cool rim shadow on the far side
     ctx.fillStyle = 'rgba(255,216,140,0.22)';
-    ctx.beginPath(); ctx.ellipse(11, -4, 7.5, 36, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(10, -3, 6.5, 18, 0, 0, 7); ctx.fill();
     ctx.fillStyle = 'rgba(30,20,70,0.20)';
-    ctx.beginPath(); ctx.ellipse(-15, 2, 5.5, 32, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-13.5, 0, 4.5, 15, 0, 0, 7); ctx.fill();
     ctx.strokeStyle = 'rgba(90,10,5,0.45)';
     ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(-18, 20); ctx.lineTo(18, 20); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-15.5, 13); ctx.lineTo(15.5, 13); ctx.stroke();
     ctx.fillStyle = '#ffd23d';
-    ctx.fillRect(-13, 30, 26, 5);
+    ctx.fillRect(-11, 20, 22, 4.5);
 
-    // canopy: glass back seen from behind-above
-    const cg = ctx.createLinearGradient(0, -34, 0, 2);
+    // canopy: just a small glass bump ahead of the wing — the top of
+    // the cabin glimpsed from behind, not a full top-down oval
+    const cg = ctx.createLinearGradient(0, -19, 0, 1);
     cg.addColorStop(0, '#0d2c4d'); cg.addColorStop(1, '#3f96d4');
     ctx.fillStyle = cg;
-    ctx.beginPath(); ctx.ellipse(0, -15, 13.5, 19, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, -9, 10.5, 9, 0, 0, 7); ctx.fill();
     ctx.fillStyle = 'rgba(215,245,255,0.85)';
-    ctx.beginPath(); ctx.ellipse(-4.5, -23, 5, 9.5, -0.3, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-3.5, -12.5, 3.6, 5, -0.3, 0, 7); ctx.fill();
 
     // vertical fin facing the camera at the tail: two faces split on the
     // centre line, the sun side brighter, so it reads as a solid fin
     // standing up off the fuselage rather than a flat sticker
     ctx.fillStyle = '#c22418';
     ctx.beginPath();
-    ctx.moveTo(0, 25); ctx.lineTo(-5, 27); ctx.lineTo(-10.5, 57); ctx.lineTo(0, 57);
+    ctx.moveTo(0, 13); ctx.lineTo(-4.5, 15); ctx.lineTo(-10, 39); ctx.lineTo(0, 39);
     ctx.closePath(); ctx.fill();
     ctx.fillStyle = '#f4532f';
     ctx.beginPath();
-    ctx.moveTo(0, 25); ctx.lineTo(5, 27); ctx.lineTo(10.5, 57); ctx.lineTo(0, 57);
+    ctx.moveTo(0, 13); ctx.lineTo(4.5, 15); ctx.lineTo(10, 39); ctx.lineTo(0, 39);
     ctx.closePath(); ctx.fill();
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(-2, 36, 4, 13);
+    ctx.fillRect(-2, 23, 4, 11);
 
     // spinner at the hub of the prop disc
     ctx.fillStyle = '#263238';
-    ctx.beginPath(); ctx.ellipse(0, noseY, 6.5, 4.6, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, noseY, 5.5, 3.8, 0, 0, 7); ctx.fill();
     ctx.fillStyle = '#ffd23d';
-    ctx.beginPath(); ctx.arc(0, noseY, 2.4, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, noseY, 2, 0, 7); ctx.fill();
 
     ctx.restore();
   }
@@ -227,7 +239,7 @@ export function createRenderer(canvas) {
   // ribbons start exactly on the tips, banked or not.
   function wingTip(s, side) {
     const a = s.bank * 0.36, cos = Math.cos(a), sin = Math.sin(a);
-    const lx = side * 122, ly = 5;
+    const lx = side * 122, ly = 3;
     return [
       s.x + s.bank * 9 + (lx * cos - ly * sin) * 1.04,
       s.y + (lx * sin + ly * cos) * 1.04 * (1 - s.pitch * 0.13),
