@@ -12,22 +12,28 @@ export function stageShot(name, world) {
   const s = world.state;
 
   if (name === 'play') {
-    // Harbour cruise: gentle right bank on the left of the frame, two
-    // rings ahead in a near-concentric course chained by the guide
-    // line, star clear on the left, storm cell over the harbour edge.
+    // High harbour cruise: gentle right bank in the UPPER band of the
+    // frame at 2400 ft, so the set covers high / mid / low plane
+    // positions across the four shots. Items ride at h = -1 — the top
+    // of the world model's height range, level with the plane in
+    // collision space — which keeps the course up by the dropped
+    // horizon: two rings ahead in a near-concentric pair chained by
+    // the guide line, star off the left wingtip, storm cell over the
+    // harbour edge, and the +FUEL popup floats over the plane where a
+    // ring pass would have spawned it.
     s.time = 24; s.left = 90 - s.time;
     s.score = 400; s.rings = 4; s.stars = 3;
-    s.alt = 1300; s.speed = 198; s.fuel = 72; s.dist = 8.2;
+    s.alt = 2400; s.speed = 198; s.fuel = 72; s.dist = 8.2;
     s.pitch = -0.15; s.bank = 0.18; s.heading = 79;
-    s.x = 430; s.y = 450;
+    s.x = 430; s.y = 250;
     s.items = [
-      {kind: 'ring', z: 300, lane: 0.10, h: -0.30, done: false},
-      {kind: 'ring', z: 850, lane: 0.34, h: -0.50, done: false},
-      {kind: 'star', z: 620, lane: -0.85, h: -0.55, done: false},
+      {kind: 'ring', z: 300, lane: 0.10, h: -1.00, done: false},
+      {kind: 'ring', z: 850, lane: 0.34, h: -1.00, done: false},
+      {kind: 'star', z: 520, lane: -1.15, h: -1.00, done: false},
       {kind: 'cloud', z: 760, lane: 1.38, h: 0.55, done: false},
     ];
     s.fx = [
-      {x: 545, y: 350, text: '+FUEL', kind: 'fuel', t: 0.4, burst: false, seed: 1},
+      {x: 500, y: 168, text: '+FUEL', kind: 'fuel', t: 0.4, burst: false, seed: 1},
     ];
     return {screen: SCREEN_PLAY, best: 900};
   }
