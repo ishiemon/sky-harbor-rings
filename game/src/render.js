@@ -20,6 +20,39 @@ function lerpCol(a, b, t) {
   return 'rgb(' + ca.map((v, i) => Math.round(v + (cb[i] - v) * t)).join(',') + ')';
 }
 
+// Compressed day cycle, keyed to run progress (elapsed / limit):
+// morning → day → golden hour → dusk → night → dawn → morning, so a
+// full run lands back near dawn at the finish. The golden-hour
+// keyframe is the look the static scene used to sit in permanently.
+// Fields: phase, sky stops (top/mid/low/horizon), sun height,
+// sun opacity, night weight, cloud tint. The sun keeps its x (every
+// other lighting cue in the scene — ridge faces, cloud shading,
+// fuselage sheen — already assumes light from the upper right) and
+// rides in height only.
+const DAY_KEYS = [
+  [0.00, '#2a6db4', '#69b7ea', '#a8d8f2', '#ffd9a0', 235, 1.00, 0.00, '#fdfdf8'],
+  [0.25, '#1668c8', '#4fb2ee', '#9fdcf7', '#cdeffd', 128, 1.00, 0.00, '#ffffff'],
+  [0.52, '#0d4f9e', '#2f8fd6', '#7cc4ea', '#ffcf99', 200, 1.00, 0.00, '#ffedd6'],
+  [0.66, '#232a5e', '#6a4a8c', '#e87a4a', '#ff9a52', 295, 0.75, 0.25, '#c99a8a'],
+  [0.74, '#050b20', '#0c1e3e', '#1d3a5f', '#2c587f', 340, 0.00, 1.00, '#5f7ba6'],
+  [0.84, '#2c4a7c', '#7d9cc2', '#d9a06a', '#ffb37a', 280, 0.60, 0.15, '#c8b4a8'],
+  [1.00, '#2a6db4', '#69b7ea', '#a8d8f2', '#ffd9a0', 235, 1.00, 0.00, '#fdfdf8'],
+];
+
+function dayAt(p) {
+  const x = clamp01(p);
+  let i = 0;
+  while (i < DAY_KEYS.length - 2 && x > DAY_KEYS[i + 1][0]) i++;
+  const A = DAY_KEYS[i], B = DAY_KEYS[i + 1];
+  const f = (x - A[0]) / Math.max(0.0001, B[0] - A[0]);
+  const mix = (j) => lerpCol(A[j], B[j], f);
+  const num = (j) => A[j] + (B[j] - A[j]) * f;
+  return {
+    top: mix(1), mid: mix(2), low: mix(3), hor: mix(4),
+    sunY: num(5), sunA: num(6), night: num(7), cloud: mix(8),
+  };
+}
+
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
   canvas.width = FIELD.width;
@@ -119,7 +152,7 @@ export function createRenderer(canvas) {
   // anchor the bottom of the sprite. Forward is up-screen (-y) but
   // the nose sits level, at cruise attitude: the plane flies away
   // from the camera, it does not stand on its tail.
-  function planeRear(x, y, bank, scale, pitch = 0) {
+  function planeRear(x, y, bank, scale, pitch = 0, night = 0, t = 0) {
     ctx.save();
     ctx.translate(x + bank * 9, y);
     ctx.rotate(bank * 0.36);
@@ -129,6 +162,16 @@ export function createRenderer(canvas) {
     // stretches it and drops the disc
     ctx.scale(1, 1 - pitch * 0.13);
     const noseY = -31 - pitch * 5;
+
+    // headlight: at night the nose lamp throws a soft pool of light
+    // onto the ground ahead of the plane (stylised, not simulated)
+    if (night > 0.02) {
+      const hg = ctx.createRadialGradient(0, noseY - 54, 4, 0, noseY - 54, 64);
+      hg.addColorStop(0, 'rgba(255,244,190,' + (0.34 * night).toFixed(3) + ')');
+      hg.addColorStop(1, 'rgba(255,244,190,0)');
+      ctx.fillStyle = hg;
+      ctx.beginPath(); ctx.ellipse(0, noseY - 54, 64, 21, 0, 0, 7); ctx.fill();
+    }
 
     // propeller: small translucent blur disc at the far nose — the
     // far end of a foreshortened airframe, so barely wider than the
@@ -160,9 +203,22 @@ export function createRenderer(canvas) {
     ctx.beginPath(); ctx.moveTo(-96, 0); ctx.lineTo(-96, 11.5); ctx.moveTo(96, 0); ctx.lineTo(96, 11.5); ctx.stroke();
     ctx.fillStyle = 'rgba(40,40,46,0.55)';
     ctx.fillRect(-30, 7.5, 12, 8.5); ctx.fillRect(18, 7.5, 12, 8.5);
-    // navigation lights on the wingtips
+    // navigation lights on the wingtips: port red, starboard
+    // green. Modest dots by day; at night they flare with a halo
+    // and a gentle pulse
     ctx.save();
-    ctx.shadowBlur = 9;
+    if (night > 0.02) {
+      ctx.globalAlpha = night * (0.78 + 0.22 * Math.sin(t * 6));
+      for (const [hx2, hc] of [[-121, 'rgba(255,59,48,'], [121, 'rgba(46,255,106,']]) {
+        const ng = ctx.createRadialGradient(hx2, 3, 1, hx2, 3, 17);
+        ng.addColorStop(0, hc + '0.55)');
+        ng.addColorStop(1, hc + '0)');
+        ctx.fillStyle = ng;
+        ctx.beginPath(); ctx.arc(hx2, 3, 17, 0, 7); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.shadowBlur = 9 + night * 18;
     ctx.shadowColor = '#ff3b30'; ctx.fillStyle = '#ff5147';
     ctx.beginPath(); ctx.arc(-121, 3, 3.6, 0, 7); ctx.fill();
     ctx.shadowColor = '#2eff8a'; ctx.fillStyle = '#3dff8f';
@@ -238,6 +294,15 @@ export function createRenderer(canvas) {
     ctx.beginPath(); ctx.ellipse(0, noseY, 5.5, 3.8, 0, 0, 7); ctx.fill();
     ctx.fillStyle = '#ffd23d';
     ctx.beginPath(); ctx.arc(0, noseY, 2, 0, 7); ctx.fill();
+    // the headlight lamp itself, burning at the hub at night
+    if (night > 0.02) {
+      ctx.save();
+      ctx.globalAlpha = night;
+      ctx.shadowBlur = 14; ctx.shadowColor = '#fff2b0';
+      ctx.fillStyle = '#fff6c8';
+      ctx.beginPath(); ctx.arc(0, noseY, 3.2, 0, 7); ctx.fill();
+      ctx.restore();
+    }
 
     ctx.restore();
   }
@@ -585,7 +650,7 @@ export function createRenderer(canvas) {
   // block, 3 forest tree clump. The caller passes the part's own zone
   // and blend alpha, so old and new zone parts interleave naturally
   // while a changeover streams past.
-  function townElement(i, x, y, sc, w, h, zone, alpha, roof) {
+  function townElement(i, x, y, sc, w, h, zone, alpha, roof, night) {
     if (alpha <= 0.01 || zone === 1) return;
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -593,10 +658,13 @@ export function createRenderer(canvas) {
       // city block: taller and wider, cool walls, a grid of windows
       const bw = w * 1.2, bh = h * 2.3;
       isoBox(x, y, bw, bh, 13 * sc, i % 2 ? '#cfd8dc' : '#aebfc7', i % 3 ? '#546e7a' : '#6d4c41');
-      ctx.fillStyle = '#ffd76a';
+      // windows: pale glass by day; at night they light up warm
+      // and more of them switch on
+      const lit = night > 0.25;
+      ctx.fillStyle = lit ? '#ffd76a' : 'rgba(176,206,228,0.55)';
       for (let r2 = 0; r2 < 3; r2++) {
         for (let c2 = 0; c2 < 2; c2++) {
-          if (hash(i * 31 + r2 * 7 + c2 * 13) > 0.45) {
+          if (hash(i * 31 + r2 * 7 + c2 * 13) > (lit ? 0.15 : 0.45)) {
             ctx.fillRect(x - bw * 0.30 + c2 * bw * 0.32, y - bh * (0.78 - r2 * 0.22), 4 * sc, 4.6 * sc);
           }
         }
@@ -764,6 +832,9 @@ export function createRenderer(canvas) {
     wts[camZ.a] = 1 - camZ.f;
     wts[camZ.b] += camZ.f;
     seaShift = -seaW * 1200;
+    // day cycle: run progress (elapsed / limit) drives the light
+    const prog = s.time + s.left > 0 ? clamp01(s.time / (s.time + s.left)) : 0;
+    const day = dayAt(prog);
 
     // ===== world, rolled slightly with the bank around the horizon =====
     ctx.save();
@@ -771,24 +842,55 @@ export function createRenderer(canvas) {
     ctx.rotate(-s.bank * 0.10);
     ctx.translate(-640, -hor);
 
-    // sky: late-afternoon grade — deep cobalt zenith, clear cyan mid,
-    // warm apricot settling on the horizon
+    // sky: colours from the day-cycle keyframes — bright morning and
+    // day, the old permanent late-afternoon grade at golden hour,
+    // purple dusk, deep blue night, warm dawn
     let g = ctx.createLinearGradient(0, -120, 0, hor + 40);
-    g.addColorStop(0, '#0d4f9e'); g.addColorStop(0.45, '#2f8fd6');
-    g.addColorStop(0.78, '#7cc4ea'); g.addColorStop(1, '#ffcf99');
+    g.addColorStop(0, day.top); g.addColorStop(0.45, day.mid);
+    g.addColorStop(0.78, day.low); g.addColorStop(1, day.hor);
     ctx.fillStyle = g;
     ctx.fillRect(-140, -120, W + 280, hor + 162);
-    // sun: low and large, fully clear of the HUD pills up top
-    const sun = ctx.createRadialGradient(1052, 168, 8, 1052, 168, 245);
-    sun.addColorStop(0, 'rgba(255,246,190,0.95)');
-    sun.addColorStop(0.25, 'rgba(255,224,120,0.55)');
-    sun.addColorStop(1, 'rgba(255,214,110,0)');
-    ctx.fillStyle = sun;
-    ctx.fillRect(800, -30, 500, 450);
-    ctx.fillStyle = '#fff3b0';
-    ctx.beginPath(); ctx.arc(1052, 168, 54, 0, 7); ctx.fill();
-    ctx.fillStyle = '#ffe45e';
-    ctx.beginPath(); ctx.arc(1052, 168, 44, 0, 7); ctx.fill();
+    // stars fade in as the night weight grows
+    if (day.night > 0.01) {
+      ctx.fillStyle = 'rgba(255,255,255,' + (day.night * 0.85).toFixed(3) + ')';
+      for (let i = 0; i < 42; i++) {
+        ctx.fillRect(hash(i * 3.9) * (W + 200) - 100, hash(i * 7.7) * Math.max(40, hor - 90), 2.2, 2.2);
+      }
+    }
+    // sun: glow, then the disc — height and opacity from the cycle,
+    // so it climbs through the morning, rides high at midday, sinks
+    // through golden hour and is gone at night
+    if (day.sunA > 0.01) {
+      ctx.save();
+      ctx.globalAlpha = day.sunA;
+      const sun = ctx.createRadialGradient(1052, day.sunY, 8, 1052, day.sunY, 245);
+      sun.addColorStop(0, 'rgba(255,246,190,0.95)');
+      sun.addColorStop(0.25, 'rgba(255,224,120,0.55)');
+      sun.addColorStop(1, 'rgba(255,214,110,0)');
+      ctx.fillStyle = sun;
+      ctx.fillRect(800, day.sunY - 198, 500, 450);
+      ctx.fillStyle = '#fff3b0';
+      ctx.beginPath(); ctx.arc(1052, day.sunY, 54, 0, 7); ctx.fill();
+      ctx.fillStyle = '#ffe45e';
+      ctx.beginPath(); ctx.arc(1052, day.sunY, 44, 0, 7); ctx.fill();
+      ctx.restore();
+    }
+    // moon, upper left, while the night lasts
+    if (day.night > 0.01) {
+      ctx.save();
+      ctx.globalAlpha = day.night;
+      const mg = ctx.createRadialGradient(296, 108, 6, 296, 108, 90);
+      mg.addColorStop(0, 'rgba(210,228,250,0.55)');
+      mg.addColorStop(1, 'rgba(210,228,250,0)');
+      ctx.fillStyle = mg;
+      ctx.fillRect(196, 8, 200, 200);
+      ctx.fillStyle = '#e9eff8';
+      ctx.beginPath(); ctx.arc(296, 108, 24, 0, 7); ctx.fill();
+      ctx.fillStyle = '#cdd9e8';
+      ctx.beginPath(); ctx.arc(288, 100, 5, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(304, 116, 4, 0, 7); ctx.fill();
+      ctx.restore();
+    }
 
     // clouds: far hazy layer, then the near layer; cloudShift lets the
     // screenshot scenes park the clouds away from the title lettering
@@ -796,12 +898,12 @@ export function createRenderer(canvas) {
     for (let i = 0; i < 6; i++) {
       const cx = ((i * 251 + s.dist * 22 + csh * 0.6) % 1560) - 140, cy = 40 + (i % 3) * 36;
       ctx.globalAlpha = 0.5;
-      cloud(cx, cy, 0.62, '#eaf7ff');
+      cloud(cx, cy, 0.62, day.cloud);
       ctx.globalAlpha = 1;
     }
     for (let i = 0; i < 8; i++) {
       const cx = ((i * 173 + s.dist * 46 + csh) % 1540) - 130, cy = 54 + (i % 3) * 52;
-      cloud(cx, cy, 0.95, '#ffffff');
+      cloud(cx, cy, 0.95, day.cloud);
     }
 
     // layered far ridgelines on the LAND side only: the layers end at
@@ -884,8 +986,8 @@ export function createRenderer(canvas) {
       ctx.globalAlpha = 1 - pz.wSea;
       ctx.beginPath(); ctx.ellipse(hx + 3, hy + 3, w * 0.62, 4 * sc, 0, 0, 7); ctx.fill();
       ctx.globalAlpha = 1;
-      townElement(i, hx, hy, sc, w, h, pz.a, 1 - pz.f, roofs[i % roofs.length]);
-      if (pz.f > 0) townElement(i, hx, hy, sc, w, h, pz.b, pz.f, roofs[i % roofs.length]);
+      townElement(i, hx, hy, sc, w, h, pz.a, 1 - pz.f, roofs[i % roofs.length], day.night);
+      if (pz.f > 0) townElement(i, hx, hy, sc, w, h, pz.b, pz.f, roofs[i % roofs.length], day.night);
     }
     // harbour warehouses and a dock crane on the shore side of the
     // runway — home-harbour features, present only in the home zone
@@ -983,15 +1085,28 @@ export function createRenderer(canvas) {
     }
     ctx.stroke();
     // golden sun-path: irregular dashes under the sun, fine and dense
-    // far away, broader and broken up close in
+    // far away, broader and broken up close in. It dies away as the
+    // night comes on (glintK), and a paler silvery moon-path takes
+    // its place under the moon.
+    const glintK = 1 - day.night * 0.85;
     for (let i = 0; i < 26; i++) {
       const t = i / 25;
       const gy = hor + 20 + t * (H - hor - 2);
       const gw = (12 + t * 96) * (0.45 + hash(i * 7.3) * 0.9);
       const gx = 1052 + shX * 0.3 + Math.sin(i * 2.4) * 10 + (hash(i * 5) - 0.5) * 30;
-      ctx.fillStyle = 'rgba(255,226,150,' + (0.14 + 0.30 * (1 - t) * hash(i * 3.1 + 0.4)).toFixed(3) + ')';
+      ctx.fillStyle = 'rgba(255,226,150,' + ((0.14 + 0.30 * (1 - t) * hash(i * 3.1 + 0.4)) * glintK).toFixed(3) + ')';
       ctx.fillRect(gx - gw / 2, gy, gw, 3 + t * 1.6);
       if (hash(i * 11) > 0.55) ctx.fillRect(gx + gw * 0.62, gy, gw * 0.4, 3 + t * 1.6);
+    }
+    if (day.night > 0.03) {
+      for (let i = 0; i < 18; i++) {
+        const t = i / 17;
+        const gy = hor + 24 + t * (H - hor - 6);
+        const gw = (9 + t * 62) * (0.45 + hash(i * 6.1 + 0.7) * 0.9);
+        const gx = 296 + shX * 0.3 + Math.sin(i * 2.1 + 1) * 8 + (hash(i * 4.3 + 0.3) - 0.5) * 24;
+        ctx.fillStyle = 'rgba(205,226,248,' + ((0.10 + 0.24 * (1 - t) * hash(i * 3.7 + 0.6)) * day.night).toFixed(3) + ')';
+        ctx.fillRect(gx - gw / 2, gy, gw, 2.6 + t * 1.3);
+      }
     }
     // sparkles
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
@@ -1231,7 +1346,7 @@ export function createRenderer(canvas) {
     ctx.fill();
 
     vortexTrails(s);
-    planeRear(s.x, s.y, s.bank, 1.04, s.pitch);
+    planeRear(s.x, s.y, s.bank, 1.04, s.pitch, day.night, s.time);
 
     // near ring: redraw its front arc over the plane so the plane reads
     // as threading the ring
@@ -1283,6 +1398,14 @@ export function createRenderer(canvas) {
       ctx.fillRect(-140, -120, W + 280, H + 190);
     }
     ctx.restore(); // end world roll
+
+    // nightfall over the world (sky, terrain, water, plane, items).
+    // The HUD and instruments are drawn after this pass, so they
+    // keep full contrast and read as lit panels against the dark.
+    if (day.night > 0.01) {
+      ctx.fillStyle = 'rgba(9,17,50,' + (day.night * 0.30).toFixed(3) + ')';
+      ctx.fillRect(0, 0, W, H);
+    }
 
     // cinematic vignette + warm grade
     const vg = ctx.createRadialGradient(640, 360, 330, 640, 360, 760);
@@ -1348,6 +1471,17 @@ export function createRenderer(canvas) {
     }
     compass(640, 43, s.heading);
 
+    // cockpit glow at night: a warm pool of light behind the lower
+    // panels, so the lit instruments pop against the darkened world
+    if (day.night > 0.01) {
+      for (const gp of [[204, 652], [1043, 652]]) {
+        const cg = ctx.createRadialGradient(gp[0], gp[1], 10, gp[0], gp[1], 260);
+        cg.addColorStop(0, 'rgba(255,186,92,' + (day.night * 0.20).toFixed(3) + ')');
+        cg.addColorStop(1, 'rgba(255,186,92,0)');
+        ctx.fillStyle = cg;
+        ctx.fillRect(gp[0] - 260, gp[1] - 130, 520, 260);
+      }
+    }
     // bottom-left status panel (hidden on the title screen)
     if (!onTitle) {
       panel(18, 592, 372, 120);
