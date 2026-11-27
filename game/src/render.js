@@ -525,11 +525,14 @@ export function createRenderer(canvas) {
 
   // Point on the harbour shoreline: the same quadratic bezier the water
   // path is built from, so foam, shallows and the pier all sit exactly
-  // on the coast instead of drifting across the land.
+  // on the coast instead of drifting across the land. The curve is kept
+  // nearly straight — a gentle bow, little top-to-bottom drift — so the
+  // coast reads as running away from the viewer toward the horizon,
+  // not as a diagonal sliding across the frame.
   function shorePoint(t, hor, shX) {
     const mt = 1 - t;
     return [
-      mt * mt * 752 + 2 * mt * t * 930 + t * t * 852 + shX,
+      mt * mt * 752 + 2 * mt * t * 864 + t * t * 834 + shX,
       mt * mt * (hor + 2) + 2 * mt * t * (hor + 130) + t * t * (H + 70),
     ];
   }
@@ -797,26 +800,36 @@ export function createRenderer(canvas) {
     ctx.beginPath(); ctx.moveTo(crx + 38, cry - 56); ctx.lineTo(crx + 38, cry - 38); ctx.stroke();
     ctx.fillStyle = '#e67e22';
     ctx.fillRect(crx + 33, cry - 38, 10, 8);
-    // road sweeping through the town toward the runway
-    ctx.strokeStyle = 'rgba(90,90,90,0.6)';
-    ctx.lineWidth = 9;
+    // road through the town: a ground-projected strip at constant u,
+    // threaded between two house columns, so it recedes straight to
+    // the vanishing point like the runway does — the old diagonal
+    // sweep across the frame made the ground read as sliding sideways
+    ctx.fillStyle = 'rgba(90,90,90,0.6)';
     ctx.beginPath();
-    ctx.moveTo(-20, H + 30);
-    ctx.quadraticCurveTo(280, hor + 250, 500, hor + 74);
-    ctx.stroke();
+    for (let i = 0; i <= 6; i++) {
+      const [rx3, ry3] = groundPoint(-0.74, 0.05 + (i / 6) * 1.03, hor);
+      if (i === 0) ctx.moveTo(rx3, ry3); else ctx.lineTo(rx3, ry3);
+    }
+    for (let i = 6; i >= 0; i--) {
+      const [rx3, ry3] = groundPoint(-0.67, 0.05 + (i / 6) * 1.03, hor);
+      ctx.lineTo(rx3, ry3);
+    }
+    ctx.closePath(); ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.65)';
     ctx.lineWidth = 2;
     ctx.setLineDash([10, 12]);
     ctx.beginPath();
-    ctx.moveTo(-20, H + 30);
-    ctx.quadraticCurveTo(280, hor + 250, 500, hor + 74);
+    for (let i = 0; i <= 6; i++) {
+      const [rx3, ry3] = groundPoint(-0.705, 0.05 + (i / 6) * 1.03, hor);
+      if (i === 0) ctx.moveTo(rx3, ry3); else ctx.lineTo(rx3, ry3);
+    }
     ctx.stroke();
     ctx.setLineDash([]);
 
     // ===== harbor: real water to the horizon on the right =====
     const waterPath = new Path2D();
     waterPath.moveTo(752 + shX, hor + 2);
-    waterPath.quadraticCurveTo(930 + shX, hor + 130, 852 + shX, H + 70);
+    waterPath.quadraticCurveTo(864 + shX, hor + 130, 834 + shX, H + 70);
     waterPath.lineTo(1420, H + 70);
     waterPath.lineTo(1420, hor - 8);
     waterPath.quadraticCurveTo(1120 + shX, hor + 26, 996 + shX, hor + 1);
@@ -878,7 +891,7 @@ export function createRenderer(canvas) {
     // reaches out over the water; its footing drifts slowly with dist
     const pierT = 0.54 + ((s.dist * 0.01) % 0.08);
     const [qx, qy] = shorePoint(pierT, hor, shX);
-    const px0 = qx - 20, py0 = qy + 4, px1 = qx + 128, py1 = qy + 30;
+    const px0 = qx - 20, py0 = qy + 4, px1 = qx + 128, py1 = qy + 14;
     ctx.fillStyle = '#6d4c41';
     ctx.beginPath();
     ctx.moveTo(px0, py0 - 6); ctx.lineTo(px1, py1 - 4);
