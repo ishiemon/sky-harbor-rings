@@ -279,11 +279,21 @@ export function createRenderer(canvas) {
   }
 
   // ---------- instruments ----------
+  // Display units are metric; the simulation itself still runs in
+  // feet, knots and nautical miles, so every readout converts on the
+  // way out (needle positions are computed from the raw values and
+  // are unaffected).
+  const altM = ft => Math.round(ft * 0.3048);
+  const spdKmh = kt => Math.round(kt * 1.852);
+  const distKm = nm => (nm * 1.852).toFixed(1);
+
   // Round dial normalised on [min,max], 270-degree sweep starting at the
   // lower-left (aviation style). The needle can never reach the digital
   // window: the sweep gap sits at the bottom where the window lives, and
   // the needle is shorter than the window's top edge in every position.
-  function dial(cx, cy, val, min, max, color, digital) {
+  // fmt, when given, converts a raw scale value to its printed scale
+  // number (min / mid / max) in the display units.
+  function dial(cx, cy, val, min, max, color, digital, fmt) {
     const r = 44;
     const face = ctx.createRadialGradient(cx - 10, cy - 12, 6, cx, cy, r);
     face.addColorStop(0, '#1a2f47');
@@ -316,6 +326,14 @@ export function createRenderer(canvas) {
       ctx.moveTo(cx + Math.cos(a) * (r - 19), cy + Math.sin(a) * (r - 19));
       ctx.lineTo(cx + Math.cos(a) * (r - 14), cy + Math.sin(a) * (r - 14));
       ctx.stroke();
+    }
+    // scale numbers at min / mid / max, in the display units, sitting
+    // inside the tick ring at the same angles the needle reads
+    if (fmt) {
+      for (const f of [0, 0.5, 1]) {
+        const a = a0 + f * sweep;
+        textM(String(fmt(min + f * (max - min))), cx + Math.cos(a) * (r - 29), cy + Math.sin(a) * (r - 29), 8.5, '#bfeaff');
+      }
     }
     // needle
     const a = a0 + clamp01((val - min) / (max - min)) * sweep;
@@ -1017,7 +1035,8 @@ export function createRenderer(canvas) {
         if (it.z < 200) nearRing = {x, y, r: rr2, lw, squash};
       } else if (it.kind === 'star') {
         // checkpoint orb: a glossy gold sphere in a thin ring of light,
-        // with the star glyph embossed on its face
+        // with a deep orange-red star glyph on its face — strong
+        // contrast so the star still reads at screenshot size
         const rs = r * 0.52;
         ctx.save();
         const glow = ctx.createRadialGradient(x, y, rs * 0.2, x, y, rs * 2.0);
@@ -1032,9 +1051,13 @@ export function createRenderer(canvas) {
         sph.addColorStop(0, '#fff6ae'); sph.addColorStop(0.55, '#ffd93d'); sph.addColorStop(1, '#f0a500');
         ctx.fillStyle = sph;
         ctx.beginPath(); ctx.arc(x, y, rs, 0, 7); ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.fillStyle = '#e64d00';
         starPath(x, y, rs * 0.55);
         ctx.fill();
+        ctx.strokeStyle = '#9c3200';
+        ctx.lineWidth = Math.max(1.2, rs * 0.06);
+        starPath(x, y, rs * 0.55);
+        ctx.stroke();
         ctx.fillStyle = 'rgba(255,255,255,0.9)';
         ctx.beginPath(); ctx.ellipse(x + rs * 0.34, y - rs * 0.38, rs * 0.16, rs * 0.10, -0.5, 0, 7); ctx.fill();
         ctx.restore();
@@ -1148,18 +1171,18 @@ export function createRenderer(canvas) {
     if (onTitle) {
       // minimal telemetry only: ALT pill / compass / SPD pill
       panel(18, 14, 216, 58, 'rgba(255,210,61,0.65)');
-      hudStat('ALT', Math.round(s.alt) + ' ft', 38, '#7dffcb');
+      hudStat('ALT', altM(s.alt) + ' m', 38, '#7dffcb');
       panel(1046, 14, 216, 58, 'rgba(255,210,61,0.65)');
-      hudStat('SPD', Math.round(s.speed) + ' kt', 1066, '#7dffcb');
+      hudStat('SPD', spdKmh(s.speed) + ' km/h', 1066, '#7dffcb');
     } else {
       panel(18, 14, 452, 58, 'rgba(255,210,61,0.65)');
       hudStat('SCORE', String(s.score), 38, '#ffd23d');
       hudStat('RINGS', s.rings + '/12', 188, '#ffffff');
       hudStat('TIME', Math.ceil(s.left) + 's', 322, s.left < 15 ? '#ff8a80' : '#ffffff');
       panel(810, 14, 452, 58, 'rgba(125,223,255,0.55)');
-      hudStat('ALT', Math.round(s.alt) + ' ft', 830, '#7dffcb');
-      hudStat('SPD', Math.round(s.speed) + ' kt', 984, '#7dffcb');
-      hudStat('DIST', s.dist.toFixed(1) + ' nm', 1120, '#ffffff');
+      hudStat('ALT', altM(s.alt) + ' m', 830, '#7dffcb');
+      hudStat('SPD', spdKmh(s.speed) + ' km/h', 984, '#7dffcb');
+      hudStat('DIST', distKm(s.dist) + ' km', 1120, '#ffffff');
     }
     compass(640, 43, s.heading);
 
@@ -1207,8 +1230,8 @@ export function createRenderer(canvas) {
       ctx.beginPath(); ctx.arc(rx - 1, ry - 1, 1.1, 0, 7); ctx.fill();
     }
     horizonGauge(886, 650, s);
-    dial(1024, 650, s.speed, 100, 280, '#ffd23d', Math.round(s.speed) + ' kt');
-    dial(1162, 650, s.alt, 0, 3000, '#7dffcb', Math.round(s.alt) + ' ft');
+    dial(1024, 650, s.speed, 100, 280, '#ffd23d', spdKmh(s.speed) + ' km/h', v => spdKmh(v));
+    dial(1162, 650, s.alt, 0, 3000, '#7dffcb', altM(s.alt) + ' m', v => altM(v));
     text('ATT', 886, 705, 10, '#9fd8ff');
     text('SPD', 1024, 705, 10, '#9fd8ff');
     text('ALT', 1162, 705, 10, '#9fd8ff');
@@ -1262,6 +1285,40 @@ export function createRenderer(canvas) {
       ctx.fillStyle = 'rgba(5,28,56,0.62)';
       rr(372, 240, 536, 27, 13); ctx.fill();
       text('Arrows / WASD steer · Shift boost · Ctrl brake · P pause', 640, 254, 14.5, '#d8f4ff');
+      // legend row: what the three course elements mean, drawn as
+      // miniatures in the same style as the course itself
+      ctx.fillStyle = 'rgba(5,28,56,0.62)';
+      rr(262, 284, 756, 36, 18); ctx.fill();
+      // mini ring: gold torus with the course ring's gradient and glow
+      ctx.save();
+      ctx.shadowColor = 'rgba(255,170,0,0.9)';
+      ctx.shadowBlur = 8;
+      const lrg = ctx.createLinearGradient(336, 290, 360, 314);
+      lrg.addColorStop(0, '#ffe97a'); lrg.addColorStop(0.5, '#ffb300'); lrg.addColorStop(1, '#ff8f00');
+      ctx.strokeStyle = lrg;
+      ctx.lineWidth = 4.5;
+      ctx.beginPath(); ctx.ellipse(348, 302, 12, 11, 0, 0, 7); ctx.stroke();
+      ctx.restore();
+      text('Ring — fly through +100', 370, 302, 14.5, '#eaf7ff', 'left');
+      // mini orb: the checkpoint sphere with its contrast star
+      ctx.strokeStyle = 'rgba(255,240,170,0.75)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(578, 302, 14, 0, 7); ctx.stroke();
+      const lsg = ctx.createRadialGradient(582, 298, 1, 578, 302, 11);
+      lsg.addColorStop(0, '#fff6ae'); lsg.addColorStop(0.55, '#ffd93d'); lsg.addColorStop(1, '#f0a500');
+      ctx.fillStyle = lsg;
+      ctx.beginPath(); ctx.arc(578, 302, 11, 0, 7); ctx.fill();
+      ctx.fillStyle = '#e64d00';
+      starPath(578, 302, 6);
+      ctx.fill();
+      ctx.strokeStyle = '#9c3200';
+      ctx.lineWidth = 1;
+      starPath(578, 302, 6);
+      ctx.stroke();
+      text('Star orb — bonus +50', 600, 302, 14.5, '#eaf7ff', 'left');
+      // mini storm: the real storm cell at legend scale
+      stormCloud(784, 301, 0.26);
+      text('Storm — avoid!', 806, 302, 14.5, '#eaf7ff', 'left');
       // start button low, in the gap between the bottom panels:
       // 3D gradient, top gloss, and a key chip as the hint
       ctx.save();
