@@ -6,7 +6,8 @@ import {SCREEN_TITLE, SCREEN_PLAY, SCREEN_OVER} from './render.js';
 // of the harbour — different plane position, altitude and distance, so
 // the parallaxed terrain, harbour and runway compose differently in
 // every shot. Items are placed so the ring, star, storm cloud, plane
-// and UI never overlap.
+// and UI never overlap — with one deliberate exception in the play
+// shot, where a trap storm crowds the near ring (see there).
 export function stageShot(name, world) {
   world.reset();
   const s = world.state;
@@ -20,7 +21,11 @@ export function stageShot(name, world) {
     // horizon: two rings ahead in a near-concentric pair chained by
     // the guide line, star off the left wingtip, storm cell over the
     // harbour edge, and the +FUEL popup floats over the plane where a
-    // ring pass would have spawned it.
+    // ring pass would have spawned it. A second storm plays the trap
+    // the game now spawns for real: it crowds the near ring's
+    // lower-left rim, so the still reads "thread the clear centre,
+    // mind the storm" — the ring centre and the plane's line to it
+    // stay clear above the cell.
     s.time = 24; s.left = 90 - s.time;
     s.score = 400; s.rings = 4; s.stars = 3;
     s.alt = 2400; s.speed = 198; s.fuel = 72; s.dist = 8.2;
@@ -30,6 +35,7 @@ export function stageShot(name, world) {
       {kind: 'ring', z: 300, lane: 0.10, h: -1.00, done: false},
       {kind: 'ring', z: 850, lane: 0.34, h: -1.00, done: false},
       {kind: 'star', z: 520, lane: -1.15, h: -1.00, done: false},
+      {kind: 'cloud', z: 330, lane: -0.27, h: 0.17, done: false},
       {kind: 'cloud', z: 760, lane: 1.38, h: 0.55, done: false},
     ];
     s.fx = [

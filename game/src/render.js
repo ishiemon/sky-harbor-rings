@@ -1034,27 +1034,28 @@ export function createRenderer(canvas) {
         ctx.restore();
         if (it.z < 200) nearRing = {x, y, r: rr2, lw, squash};
       } else if (it.kind === 'star') {
-        // checkpoint orb: a glossy gold sphere in a thin ring of light,
-        // with a deep orange-red star glyph on its face — strong
-        // contrast so the star still reads at screenshot size
+        // checkpoint orb: a glossy AMBER-ORANGE sphere in a thin ring
+        // of light — orange by hue, so it separates at a glance from
+        // the yellow-gold rings; the star glyph is pale cream with a
+        // dark outline, so it stays readable on the orange face
         const rs = r * 0.52;
         ctx.save();
         const glow = ctx.createRadialGradient(x, y, rs * 0.2, x, y, rs * 2.0);
-        glow.addColorStop(0, 'rgba(255,220,40,0.38)');
-        glow.addColorStop(1, 'rgba(255,220,40,0)');
+        glow.addColorStop(0, 'rgba(255,138,20,0.40)');
+        glow.addColorStop(1, 'rgba(255,138,20,0)');
         ctx.fillStyle = glow;
         ctx.beginPath(); ctx.arc(x, y, rs * 2.0, 0, 7); ctx.fill();
-        ctx.strokeStyle = 'rgba(255,240,170,0.75)';
+        ctx.strokeStyle = 'rgba(255,196,130,0.8)';
         ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(x, y, rs * 1.28, 0, 7); ctx.stroke();
         const sph = ctx.createRadialGradient(x + rs * 0.35, y - rs * 0.35, rs * 0.1, x, y, rs);
-        sph.addColorStop(0, '#fff6ae'); sph.addColorStop(0.55, '#ffd93d'); sph.addColorStop(1, '#f0a500');
+        sph.addColorStop(0, '#ffdca3'); sph.addColorStop(0.55, '#ff8c1a'); sph.addColorStop(1, '#dd5a00');
         ctx.fillStyle = sph;
         ctx.beginPath(); ctx.arc(x, y, rs, 0, 7); ctx.fill();
-        ctx.fillStyle = '#e64d00';
+        ctx.fillStyle = '#fff3d6';
         starPath(x, y, rs * 0.55);
         ctx.fill();
-        ctx.strokeStyle = '#9c3200';
+        ctx.strokeStyle = '#7a2800';
         ctx.lineWidth = Math.max(1.2, rs * 0.06);
         starPath(x, y, rs * 0.55);
         ctx.stroke();
@@ -1176,9 +1177,20 @@ export function createRenderer(canvas) {
       hudStat('SPD', spdKmh(s.speed) + ' km/h', 1066, '#7dffcb');
     } else {
       panel(18, 14, 452, 58, 'rgba(255,210,61,0.65)');
-      hudStat('SCORE', String(s.score), 38, '#ffd23d');
-      hudStat('RINGS', s.rings + '/12', 188, '#ffffff');
-      hudStat('TIME', Math.ceil(s.left) + 's', 322, s.left < 15 ? '#ff8a80' : '#ffffff');
+      hudStat('SCORE', String(s.score), 34, '#ffd23d');
+      hudStat('RINGS', s.rings + '/12', 148, '#ffffff');
+      // star tally beside the rings count: the orb's cream star glyph
+      // at pill scale, with the collected count from the world state
+      text('STARS', 238, 31, 10.5, '#9fd8ff', 'left', 700);
+      ctx.fillStyle = '#fff3d6';
+      starPath(246, 48, 8);
+      ctx.fill();
+      ctx.strokeStyle = '#7a2800';
+      ctx.lineWidth = 1.2;
+      starPath(246, 48, 8);
+      ctx.stroke();
+      textM(String(s.stars), 260, 54, 21, '#ffb35c', 'left');
+      hudStat('TIME', Math.ceil(s.left) + 's', 336, s.left < 15 ? '#ff8a80' : '#ffffff');
       panel(810, 14, 452, 58, 'rgba(125,223,255,0.55)');
       hudStat('ALT', altM(s.alt) + ' m', 830, '#7dffcb');
       hudStat('SPD', spdKmh(s.speed) + ' km/h', 984, '#7dffcb');
@@ -1300,18 +1312,19 @@ export function createRenderer(canvas) {
       ctx.beginPath(); ctx.ellipse(348, 302, 12, 11, 0, 0, 7); ctx.stroke();
       ctx.restore();
       text('Ring — fly through +100', 370, 302, 14.5, '#eaf7ff', 'left');
-      // mini orb: the checkpoint sphere with its contrast star
-      ctx.strokeStyle = 'rgba(255,240,170,0.75)';
+      // mini orb: the checkpoint sphere with its contrast star —
+      // same amber-orange body and cream glyph as the course orb
+      ctx.strokeStyle = 'rgba(255,196,130,0.8)';
       ctx.lineWidth = 1.6;
       ctx.beginPath(); ctx.arc(578, 302, 14, 0, 7); ctx.stroke();
       const lsg = ctx.createRadialGradient(582, 298, 1, 578, 302, 11);
-      lsg.addColorStop(0, '#fff6ae'); lsg.addColorStop(0.55, '#ffd93d'); lsg.addColorStop(1, '#f0a500');
+      lsg.addColorStop(0, '#ffdca3'); lsg.addColorStop(0.55, '#ff8c1a'); lsg.addColorStop(1, '#dd5a00');
       ctx.fillStyle = lsg;
       ctx.beginPath(); ctx.arc(578, 302, 11, 0, 7); ctx.fill();
-      ctx.fillStyle = '#e64d00';
+      ctx.fillStyle = '#fff3d6';
       starPath(578, 302, 6);
       ctx.fill();
-      ctx.strokeStyle = '#9c3200';
+      ctx.strokeStyle = '#7a2800';
       ctx.lineWidth = 1;
       starPath(578, 302, 6);
       ctx.stroke();

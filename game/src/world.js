@@ -4,7 +4,26 @@ export const EVENT_RING=1, EVENT_HIT=2, EVENT_OVER=4;
 export function createWorld(rand){
  const s={time:0,left:RUN_SECONDS,score:0,rings:0,stars:0,lives:LIVES,alt:1240,speed:186,heading:74,pitch:0,bank:0,x:640,y:360,fuel:86,dist:0,items:[],flash:0,seedOff:0,fx:[],boost:false,cloudShift:0};
  let spawn=0, ringsSpawned=0;
- function add(kind,z){ const it={kind,z:z??(900+rand()*500),lane:(rand()*2-1),h:(rand()*2-1),done:false}; if(kind==='ring'){ ringsSpawned++; it.big = ringsSpawned===12; } s.items.push(it); }
+ function add(kind,z){ const it={kind,z:z??(900+rand()*500),lane:(rand()*2-1),h:(rand()*2-1),done:false}; if(kind==='ring'){ ringsSpawned++; it.big = ringsSpawned===12; } s.items.push(it); if(kind==='ring') trapFor(it); }
+ // Trap pattern, mixed in with the fully random spawns: about one
+ // ring in three also gets a storm cell guarding it at the same
+ // depth, crowding one edge of the ring. Distances are collision
+ // space (a ring scores within 105 of its centre, a cloud hits
+ // within 62), so a guard centre 80–115 away always leaves the
+ // ring centre cleanly passable — it punishes a sloppy line, never
+ // blocks the ring. Capped so the course never floods with storms.
+ function trapFor(ring){
+   if(rand()>=0.34) return;
+   let clouds=0; for(const i of s.items) if(i.kind==='cloud') clouds++;
+   if(clouds>=6) return;
+   for(let k=0;k<6;k++){
+     const a=rand()*Math.PI*2, d=80+rand()*35;
+     const lane=ring.lane+Math.cos(a)*d/260, h=ring.h+Math.sin(a)*d/120;
+     if(lane<-1.35||lane>1.35||h<-1||h>1) continue;
+     s.items.push({kind:'cloud',z:ring.z+(rand()*40-20),lane,h,done:false});
+     return;
+   }
+ }
  function popup(text,kind,burst){ s.fx.push({x:s.x+(rand()*70-35),y:s.y-95,text,kind,t:0,burst:!!burst,seed:rand()*3}); }
  function reset(){ Object.assign(s,{time:0,left:RUN_SECONDS,score:0,rings:0,stars:0,lives:LIVES,alt:1240,speed:186,heading:74,pitch:0,bank:0,x:640,y:360,fuel:86,dist:0,items:[],flash:0,fx:[],boost:false,cloudShift:0}); spawn=0; ringsSpawned=0; for(let i=0;i<7;i++) add(i%3==2?'cloud':'ring',300+i*190); }
  function step(dt,move,title){
